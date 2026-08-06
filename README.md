@@ -14,17 +14,7 @@
 
 ## 技术架构
 
-```
-行为日志(Mock)  →  Flume  →  Kafka  →  Flume  →  HDFS
-                                                       ↘
-MySQL 业务数据  →  Maxwell  →  Kafka  →  Flume  →  HDFS  →  Hive on Spark
-                                                                      ↓
-                                              ODS(30表) → DIM(9表) → DWD(10表) → DWS(15表) → ADS(16表)
-                                                                                                      ↓
-                                                                              Doris 2.0 (Broker Load) → Superset 可视化
-                                                                                                      ↑
-                                                                              DolphinScheduler 2.0 (全链路 DAG 调度)
-```
+![架构图](images/流程图.jpeg)
 
 ## 技术栈
 
