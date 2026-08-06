@@ -1,6 +1,5 @@
 # 阶段二：Hadoop + Zookeeper + Kafka + Flume 日志采集通道
 
-> 对应文档：《电商数仓（用户行为采集平台）V6.0》第3章3.5节 + 第4章
 > 目标：部署 Hadoop/ZK/Kafka/Flume，打通"日志生成 → Flume采集 → Kafka"链路
 
 ---
@@ -32,8 +31,6 @@ Hadoop(HDFS+YARN) → Zookeeper → Kafka → Flume → 数据模拟+通道测�
 | SecondaryNameNode | | | ✓ |
 | ResourceManager | | ✓ | |
 | NodeManager | ✓ | ✓ | ✓ |
-
-> 内存紧张（每台 4GB）：NameNode 和 ResourceManager 各自独立部署，避免 hadoop100 负载过重。
 
 ### 1.2 下载并解压
 
@@ -155,8 +152,6 @@ vim /opt/module/hadoop/etc/hadoop/hdfs-site.xml
     <value>1</value>
 </property>
 ```
-
-> ⚠️ `dfs.replication` 设为 1，学习环境每台 VM 只有一块虚拟磁盘，副本多了没意义且浪费空间。
 >
 > 📝 **备用**：如果后续 DataX/DolphinScheduler 等组件以不同用户运行时遇到 `Permission denied`，追加以下配置关闭 HDFS 权限检查：
 > ```xml
@@ -246,9 +241,10 @@ vim /opt/module/hadoop/etc/hadoop/yarn-site.xml
 </property>
 ```
 
-> 📝 **内存配置说明**：`yarn.nodemanager.resource.memory-mb=2048` 告知 YARN 每节点可用 2GB 作为容器计算资源。4GB 总内存中，OS 约 500MB + ZK 256MB + Kafka 512MB + Hadoop 守护进程约 500MB（含 NN/DN/NM/RM/SNN），剩余约 2GB 留给 YARN 容器。后续安装更多组件（MySQL/Maxwell/Flume/DS）会进一步挤压 YARN 可用资源，届时可能需降至 1536MB。
+> 📝 **内存配置说明**：`yarn.nodemanager.resource.memory-mb=2048` 告知 YARN 每节点可用 2GB 作为容器计算资源。
+> 后续安装更多组件（MySQL/Maxwell/Flume/DS）会进一步挤压 YARN 可用资源，届时可能需降至 1536MB。
 > 
-> **为什么必须关 pmem-check**：YARN 默认会监控容器实际物理内存使用量，如果超过申请值就杀容器。但在 4GB 低内存环境下，JVM 堆外内存和各种 overhead 很容易让实际使用量超过申请值。关闭后 YARN 不再检查，避免无辜杀容器。
+> **为什么必须关 pmem-check**：YARN 默认会监控容器实际物理内存使用量，如果超过申请值就杀容器。但在低内存环境下，JVM 堆外内存和各种 overhead 很容易让实际使用量超过申请值。关闭后 YARN 不再检查，避免无辜杀容器。
 
 #### 1.4.4 MapReduce 配置：mapred-site.xml
 
@@ -327,36 +323,10 @@ vim /opt/module/hadoop/etc/hadoop/hadoop-env.sh
 ```bash
 export JAVA_HOME=/opt/module/jdk-1.8.0
 
-# ====== JVM 堆限制（4GB 内存环境必须配置，全组件累计不能超 4GB） ======
-
-# NameNode: 512MB（存储元数据，不能太小）
-export HADOOP_NAMENODE_OPTS="-Xmx512m -Xms256m $HADOOP_NAMENODE_OPTS"
-
-# SecondaryNameNode: 512MB（checkpoint 合并镜像时需要较大堆）
-export HADOOP_SECONDARYNAMENODE_OPTS="-Xmx512m -Xms256m $HADOOP_SECONDARYNAMENODE_OPTS"
-
-# DataNode: 256MB（主要是 I/O，不需要大堆）
-export HADOOP_DATANODE_OPTS="-Xmx256m -Xms128m $HADOOP_DATANODE_OPTS"
-
-# NodeManager: 256MB（管理容器生命周期，不跑计算）
-export YARN_NODEMANAGER_OPTS="-Xmx256m -Xms128m $YARN_NODEMANAGER_OPTS"
-
-# ResourceManager: 512MB（集群调度大脑，需要较大堆）
-export YARN_RESOURCEMANAGER_OPTS="-Xmx512m -Xms256m $YARN_RESOURCEMANAGER_OPTS"
-
 # 解决 "JAVA_HOME is not set" 警告
 export HADOOP_OS_TYPE=${HADOOP_OS_TYPE:-$(uname -s)}
 ```
 
-> 📝 **各节点 JVM 堆的内存占用分析**（全组件就绪后预估）：
->
-> | 节点 | 常驻 JVM 进程（堆大小） | JVM 堆合计 | 非 JVM 进程 | OS 预留 | 实际可用 |
-> |------|------------------------|-----------|-----------|--------|:------:|
-> | hadoop100 | NN(512) + DN(256) + NM(256) + ZK(256) + Kafka(256) + HMS(512) | ~2.05GB | — | ~500MB | ~**1.45GB** |
-> | hadoop101 | DN(256) + RM(512) + NM(256) + ZK(256) + Kafka(256) + MySQL(~512) | ~2.33GB | ~30MB | ~500MB | ~**1.14GB** |
-> | hadoop102 | SNN(512) + DN(256) + NM(256) + ZK(256) + Kafka(256) + DS(1152) + Superset(512) | ~3.20GB | — | ~500MB | ~**0.30GB** |
->
-> ⚠️ **hadoop102 内存最紧张**。DolphinScheduler 四个服务合计 1.15GB（Master 384 + Worker 384 + API 256 + Alert 128），加上其他 JVM 进程后仅剩约 300MB 物理内存。虽然关了 `pmem-check-enabled`（YARN 不会因此杀容器），但 OS 的 OOM Killer 仍可能介入。**建议**：YARN 容器尽量不要调度到 hadoop102，或将 DS 的 Master/Worker 堆降至 256MB。
 
 #### 1.4.7 配置 capacity-scheduler.xml（AM 资源比例）
 
@@ -369,16 +339,15 @@ vim /opt/module/hadoop/etc/hadoop/capacity-scheduler.xml
 ```xml
 <property>
     <name>yarn.scheduler.capacity.maximum-am-resource-percent</name>
-    <value>0.5</value>
+    <value>0.7</value>
     <description>
         AM 资源占比上限。YARN 容量调度器默认限制 ApplicationMaster 
         最多使用队列总资源的 10%。学习集群资源少（每节点 2GB），默认值太保守。
-        0.5 = 集群总资源的 50%，约 3GB，够 Flink JM + Spark Driver 同时存在。
     </description>
 </property>
 ```
 
-> ⚠️ **必须修改**。默认 10%（约 600MB）不够 Flink JM（申请 1GB）提交到 YARN。设为 0.5 后 AM 上限约 3GB，Flink JM 1GB + Spark Driver 512MB 可同时运行。生产环境保持默认 0.1 即可。
+> ⚠️ **必须修改**。生产环境保持默认 0.1 即可。
 
 ### 1.5 分发 Hadoop
 

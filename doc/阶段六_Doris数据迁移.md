@@ -6,7 +6,8 @@
 
 ## 概述
 
-ADS 层报表数据量小（百~万行级），但需支持低延迟交互查询和看板可视化。Hive on Spark 走 MR/Spark 批处理，查询延迟高（秒~分钟级），不适合直接接入 BI 看板。因此选择 Apache Doris（OLAP 数据库）作为 ADS 层的查询加速层。
+ADS 层报表数据量小（百~万行级），但需支持低延迟交互查询和看板可视化。Hive on Spark 走 MR/Spark 批处理，查询延迟高（秒~分钟级），不适合直接接入 BI 看板。
+因此选择 Apache Doris（OLAP 数据库）作为 ADS 层的查询加速层。
 
 Doris 兼容 MySQL 协议，BI 工具（如 Superset、DataEase）可通过标准 MySQL JDBC 直连，查询延迟低至毫秒级。
 
@@ -26,7 +27,7 @@ Doris 兼容 MySQL 协议，BI 工具（如 Superset、DataEase）可通过标�
 
 ### 1.2 单机部署架构
 
-集群共 3 台 VM，hadoop102 已升级到 8GB（原 4GB），其余两台仍为 4GB。hadoop100 和 hadoop101 负载较重（NN/RM/Hive/Spark/Maxwell），只有 hadoop102 相对空闲（仅 SNN + Flume 消费端）。因此将 Doris 单机部署在 **hadoop102**：
+集群共 3 台 VM，将 Doris 单机部署在 **hadoop102**：
 
 ```
 ┌─────────────────────────────────────┐
@@ -48,8 +49,6 @@ Doris 兼容 MySQL 协议，BI 工具（如 Superset、DataEase）可通过标�
 |---|---|---|---|---|
 | FE (Frontend) | hadoop102 | 堆 2GB | 9030/8030 | 元数据管理、查询解析、MySQL协议入口 |
 | BE (Backend) | hadoop102 | 堆 2GB + mem_limit 45%(≈3.6GB) | 9060/8040 | 数据存储、查询执行 |
-
-> hadoop102 总内存 8GB：OS ~1GB + SNN/Flume ~1GB + FE 堆 2GB + BE ~3.6GB ≈ 7.6GB，留 0.4GB 缓冲。
 
 ---
 
@@ -165,7 +164,7 @@ LOG_DIR = ${DORIS_HOME}/log
 sys_log_level = INFO
 sys_log_mode = NORMAL
 
-# ===== JVM 堆内存：hadoop102 升级到 8GB，FE 调至 2G =====
+# ===== JVM 堆内存，FE 调至 2G =====
 # ⚠️ 必须写在一行内！start_fe.sh 用 eval 解析配置，换行会报"语法错误: 未预期的文件结尾"
 JAVA_OPTS="-Djavax.security.auth.useSubjectCredsOnly=false -Xss2m -Xmx2048m -Xms2048m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:SurvivorRatio=8 -XX:MaxTenuringThreshold=7 -XX:+PrintGCDateStamps -XX:+PrintGCDetails -Xloggc:$DORIS_HOME/log/fe.gc.log.$CUR_DATE"
 
@@ -583,88 +582,19 @@ PROPERTIES ("replication_num" = "1");
 ---
 
 
-## 7. 数据迁移方案选型
+## 7. 数据迁移方案
 
-Doris 支持多种方式接入 Hive 数据，本项目的 ADS 报表数据量小（日增 < 10 万行），同时 4GB VM 磁盘空间紧张。以下对比三种主流方案：
 
-| 维度 | Multi-Catalog | Broker Load | Stream Load（原方案） |
-|---|---|---|---|
-| 原理 | 建 Hive 外部 Catalog，Doris 实时查 HDFS | Doris BE 从 HDFS 批量拉取数据文件灌入本地存储 | curl HTTP 推送本地 TSV 文件到 BE |
-| 数据存储 | **不存**，零冗余 | 存一份 Doris 副本 | 存一份 Doris 副本 |
-| 查询延迟 | 依赖 Hive/HDFS，百毫秒~秒级 | **毫秒级** | **毫秒级** |
-| Hive 依赖 | 必须在线 | 导入后可离线 | 导入后可离线 |
-| 运维复杂度 | 一条 SQL 建 Catalog，零维护 | 需配置 Broker + 定时 LOAD | 需先导出到本地再 curl |
-| 生产推荐度 | 轻量验证 / 临时查询 | **🥇 中大厂标配** | 🥉 小数据兜底 |
-| 磁盘占用 | 无 | 少量（ADS 数据 < 100MB） | 少量 |
-
-**本项目采用策略：Multi-Catalog 用于快速验证（建完即查），Broker Load 作为正式调度导入方案（对齐生产环境）。**
+**本项目采用策略：Broker Load 作为正式调度导入方案（对齐生产环境）。**
 
 ---
 
-## 8. 方案一：Multi-Catalog 联邦查询（快速验证）
 
-> 适用场景：建完 Doris FE/BE 后，一条 SQL 即可查询 Hive ADS 数据，无需任何导入流程。
-
-### 8.1 创建 Hive Catalog
-
-通过 MySQL 客户端连接 Doris FE：
-
-```sql
-mysql -h hadoop102 -P 9030 -u root -proot
-```
-
-创建指向 Hive MetaStore 的 Catalog：
-
-```sql
-CREATE CATALOG hive_catalog PROPERTIES (
-    "type" = "hms",
-    "hive.metastore.uris" = "thrift://hadoop100:9083"
-);
-```
-
-> `hadoop100:9083` 是 Hive MetaStore 的 Thrift 端口，确认 Hive Metastore 服务已启动：
-> ```bash
-> ssh hadoop100 "ps aux | grep metastore | grep -v grep"
-> ```
-
-### 8.2 查询验证
-
-```sql
--- 切换 Catalog
-SWITCH hive_catalog;
-
--- 查看 Hive 库
-SHOW DATABASES;
-
--- 直查 Hive ADS 表
-SELECT * FROM gmall.ads_traffic_stats_by_channel WHERE dt='2026-06-18' LIMIT 10;
-SELECT COUNT(*) FROM gmall.ads_user_action WHERE dt='2026-06-18';
-SELECT * FROM gmall.ads_order_by_province WHERE dt='2026-06-18';
-```
-
-### 8.3 在 Doris 内部库中创建视图（可选）
-
-如果 BI 工具需要固定连接某个 Doris 库，可以在 Doris 内部库中创建视图指向 Hive 表：
-
-```sql
--- 回到 Doris 内部库
-SWITCH internal;
-USE gmall;
-
--- 创建视图（注意：Doris 2.0 视图跨 Catalog 引用需使用 catalog.database.table 格式）
-CREATE VIEW ads_traffic_stats_by_channel_v AS
-SELECT * FROM hive_catalog.gmall.ads_traffic_stats_by_channel;
-```
-
-> **局限**：视图方式不支持复杂聚合下推，大查询会退化为全表扫描再在 Doris 侧过滤。建议仅用于小数据量场景或临时验证。
-
----
-
-## 9. 方案二：Broker Load 批量导入（生产方案）
+## 8. 方案二：Broker Load 批量导入（生产方案）
 
 > 适用场景：每日定时将 ADS 数据导入 Doris 本地存储，查询性能最优，适合接入 BI 看板。
 
-### 9.1 原理
+### 8.1 原理
 
 ```
 Hive ADS 表 (HDFS 文件)
@@ -676,7 +606,7 @@ Hive ADS 表 (HDFS 文件)
 
 Broker Load 是异步导入：FE 下发任务后，每个 BE 直接从 HDFS 并行拉取数据文件，不经过中间 JVM 转发，吞吐可达 **37-42 万行/秒**。
 
-### 9.2 前置条件
+### 8.2 前置条件
 
 **① 确认 Hive ADS 表文件路径**
 
@@ -687,7 +617,7 @@ hive -e "DESC FORMATTED gmall.ads_traffic_stats_by_channel" 2>/dev/null | grep "
 
 **② Doris 2.0 起 BE 内置 HDFS 支持，使用 `WITH HDFS` 语法，无需额外部署 Broker 进程。**
 
-### 9.3 逐表 Broker Load
+### 8.3 逐表 Broker Load
 
 连接 Doris FE 后执行 `LOAD LABEL` 语句。ADS 表在 Hive 侧存储为 TSV（`\t` 分隔），Doris 侧对应解析。
 
@@ -936,7 +866,7 @@ WITH HDFS
 PROPERTIES ("timeout" = "300", "max_filter_ratio" = "0.1");
 ```
 
-### 9.4 查看导入状态
+### 8.4 查看导入状态
 
 ```sql
 -- 按时间倒序查看最近的任务
@@ -951,7 +881,7 @@ SHOW LOAD FROM gmall WHERE label = 'gmall.ads_coupon_stats_20260618'\G
 - `LoadBytes`: 实际导入的字节数
 - `LoadRows`: 实际导入的行数
 
-### 9.5 Broker Load 调度脚本
+### 8.5 Broker Load 调度脚本
 
 ```bash
 sudo vim /home/hadoop/bin/ads_broker_load.sh
@@ -1035,7 +965,7 @@ sudo chmod +x /home/hadoop/bin/ads_broker_load.sh
 
 ---
 
-## 10. 两种方案对比总结
+## 9. 两种方案对比总结
 
 | | Multi-Catalog 联邦查询 | Broker Load 批量导入 |
 |---|---|---|
@@ -1050,20 +980,10 @@ sudo chmod +x /home/hadoop/bin/ads_broker_load.sh
 
 ---
 
-## 11. 验证
+## 10. 验证
 
-### 11.1 Multi-Catalog 验证
 
-```sql
--- Doris 内执行
-SWITCH hive_catalog;
-SELECT 'ads_traffic_stats_by_channel', COUNT(*) FROM gmall.ads_traffic_stats_by_channel WHERE dt='2026-06-18' UNION ALL
-SELECT 'ads_user_action', COUNT(*) FROM gmall.ads_user_action WHERE dt='2026-06-18' UNION ALL
-SELECT 'ads_order_by_province', COUNT(*) FROM gmall.ads_order_by_province WHERE dt='2026-06-18';
--- ... 16 表全查
-```
-
-### 11.2 Broker Load 验证
+### 10.1 Broker Load 验证
 
 ```bash
 # 提交导入
@@ -1086,7 +1006,7 @@ SELECT 'ads_user_action', COUNT(*) FROM gmall.ads_user_action WHERE dt='2026-06-
 
 ---
 
-## 12. 阶段验证清单
+## 11. 阶段验证清单
 
 | # | 验证项 | 操作 | 预期 |
 |---|--------|------|------|

@@ -20,24 +20,7 @@
 
 ---
 
-## 1. 卸载 hadoop102 上的 Superset（如之前安装过）
-
-```bash
-# 停止进程
-ssh hadoop102 "superset.sh stop 2>/dev/null"
-
-# 删除 conda 环境和 Miniconda
-ssh hadoop102 "source ~/.bashrc 2>/dev/null ; conda remove -n superset --all -y 2>/dev/null"
-ssh hadoop102 "rm -rf /opt/module/miniconda3 ~/miniconda3 ~/base.txt ~/.conda"
-ssh hadoop102 "rm -f /opt/software/Miniconda3-*.sh /home/hadoop/bin/superset.sh"
-
-# 清理 MySQL 元数据库（MySQL 8.0 DROP USER 需 SYSTEM_USER 权限，改为 DELETE）
-mysql -h hadoop100 -u root -p -e "DROP DATABASE IF EXISTS superset; DELETE FROM mysql.user WHERE user='superset'; FLUSH PRIVILEGES;"
-```
-
----
-
-## 2. 在 hadoop101 上安装 Python 环境
+## 1. 在 hadoop101 上安装 Python 环境
 
 ```bash
 # 下载 Miniconda（CentOS 7 GLIBC 2.17 兼容版）
@@ -56,7 +39,7 @@ ssh hadoop101 "source ~/.bashrc && conda create --name superset python=3.8.16 -y
 
 ---
 
-## 3. 安装 Superset 2.0.0
+## 2. 安装 Superset 2.0.0
 
 ```bash
 # 系统依赖
@@ -70,7 +53,7 @@ ssh hadoop101 "pip install apache-superset==2.0.0 -i https://pypi.tuna.tsinghua.
 
 ---
 
-## 4. 配置元数据库
+## 3. 配置元数据库
 
 ```bash
 # 在 hadoop100 上创建元数据库
@@ -98,7 +81,7 @@ ssh hadoop101 "source ~/.bashrc && conda activate superset && superset init"
 
 ---
 
-## 5. 启动 Superset
+## 4. 启动 Superset
 
 ```bash
 # 安装 Gunicorn + 启动
@@ -109,7 +92,7 @@ ssh hadoop101 "source ~/.bashrc && conda activate superset && pip install gunico
 
 ---
 
-## 6. 启停脚本
+## 5. 启停脚本
 
 ```bash
 sudo vim /home/hadoop/bin/superset.sh   # 在 hadoop101 上
@@ -152,9 +135,9 @@ ssh hadoop101 "chmod +x /home/hadoop/bin/superset.sh"
 
 ---
 
-## 7. 连接 Doris + 导入数据集
+## 6. 连接 Doris + 导入数据集
 
-### 7.1 安装驱动 + 添加数据库
+### 6.1 安装驱动 + 添加数据库
 
 ```bash
 ssh hadoop101 "source ~/.bashrc && conda activate superset && pip install mysql-connector-python"
@@ -169,7 +152,7 @@ ssh hadoop101 "source ~/.bashrc && conda activate superset && pip install mysql-
 
 点击 **CONNECT**，确认连接成功。
 
-### 7.2 导入 ADS 数据集
+### 6.2 导入 ADS 数据集
 
 进入 **Data** → **Datasets** → **+ DATASET**，依次添加 16 张 ADS 报表表：
 
@@ -196,7 +179,7 @@ ssh hadoop101 "source ~/.bashrc && conda activate superset && pip install mysql-
 
 ---
 
-## 8. 创建仪表盘
+## 7. 创建仪表盘
 
 进入 **Dashboards** → **+ DASHBOARD**：
 
@@ -208,7 +191,7 @@ ssh hadoop101 "source ~/.bashrc && conda activate superset && pip install mysql-
 
 ---
 
-## 9. 创建图表
+## 8. 创建图表
 
 进入 **Charts** → **+ CHART**，选择数据集 → 选择图表类型 → **CREATE NEW CHART**。
 
@@ -225,7 +208,7 @@ ssh hadoop101 "source ~/.bashrc && conda activate superset && pip install mysql-
 
 ---
 
-## 10. 阶段验证清单
+## 9. 阶段验证清单
 
 | # | 验证项 | 操作 | 预期 |
 |---|--------|------|------|

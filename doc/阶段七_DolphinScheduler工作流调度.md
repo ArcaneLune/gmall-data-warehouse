@@ -6,7 +6,8 @@
 
 ## 概述
 
-前六个阶段已打通 "日志/业务数据采集 → ODS → DIM → DWD → DWS → ADS → Doris" 全链路。各层装载脚本散落执行，效率低且易遗漏。本阶段引入 DolphinScheduler 工作流调度系统，将所有脚本串成 DAG，一键触发全链路跑批。
+前六个阶段已打通 "日志/业务数据采集 → ODS → DIM → DWD → DWS → ADS → Doris" 全链路。各层装载脚本散落执行，效率低且易遗漏。
+本阶段引入 DolphinScheduler 工作流调度系统，将所有脚本串成 DAG，一键触发全链路跑批。
 
 选择 **hadoop102 + Standalone 单机模式**：
 - 一个 JVM 进程包含 Master、Worker、API、Alert 全部功能，无需额外部署 MySQL/PostgreSQL 元数据库
@@ -30,33 +31,9 @@ sudo yum install -y psmisc
 
 ---
 
-## 2. 清理旧部署 + 重新安装
+## 2. 安装
 
-### 2.1 清理旧部署残留
-
-```bash
-# 1. 停止当前所有 DS 进程（在 hadoop102 上）
-cd /opt/module/dolphinscheduler
-bin/dolphinscheduler-daemon.sh stop standalone-server 2>/dev/null
-bin/stop-all.sh 2>/dev/null
-
-# 2. 强制杀残留
-pkill -f dolphinscheduler 2>/dev/null
-pkill -f StandaloneServer 2>/dev/null
-
-# 3. 删除旧安装目录和临时文件
-rm -rf /opt/module/dolphinscheduler
-rm -rf /opt/software/apache-dolphinscheduler-2.0.5-bin
-rm -rf /tmp/dolphinscheduler
-
-# 4. 清理 HDFS 上的 DS 资源目录
-hdfs dfs -rm -r -f /dolphinscheduler 2>/dev/null
-
-# 5. 清理 MySQL 中的 DS 元数据库（在 hadoop100 上）
-mysql -u root -p -e "DROP DATABASE IF EXISTS dolphinscheduler; DROP USER IF EXISTS 'dolphinscheduler'@'%';"
-```
-
-### 2.2 解压并启动
+### 2.1 解压并启动
 
 ```bash
 # 在 hadoop102 上操作

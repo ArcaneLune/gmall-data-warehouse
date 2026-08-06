@@ -74,7 +74,7 @@ gmall-data-warehouse/
 ├── 集群启停速查手册.md                      # 全部组件启停命令
 ├── README.md
 │
-├── doc/                                    # 八阶段实施文档
+├── doc/                                    # 从0-1共八阶段实施文档
 │   ├── 阶段一_服务器基础环境准备.md
 │   ├── 阶段二_Hadoop+ZK+Kafka+Flume日志采集通道.md
 │   ├── 阶段三_MySQL+Maxwell业务数据采集通道.md
@@ -94,7 +94,7 @@ gmall-data-warehouse/
 │   ├── xsync                               # 集群文件分发
 │   └── xcall                               # 集群批量命令
 │
-├── dpd_scripts/                            # DolphinScheduler 每日调度脚本
+├── DS_scripts/                            # DolphinScheduler 每日调度脚本
 │   ├── mysql_to_hdfs_full.sh               # DataX 全量同步
 │   ├── hdfs_to_ods_log.sh                  # ODS 日志表
 │   ├── hdfs_to_ods_db.sh                   # ODS 业务表
@@ -108,6 +108,8 @@ gmall-data-warehouse/
 │
 ├── sql/
 │   ├── gmall.sql                           # MySQL 业务库建表脚本（36表）
+│   ├── ods.sql / dim.sql / dwd.sql         # Hive DDL（ODS/DIM/DWD层）
+│   ├── dws.sql / ads.sql                   # Hive DDL（DWS/ADS层）
 │   └── date_info.txt                       # 日期维度表数据（2026-2027）
 │
 ├── images/                                 # 架构图与看板截图
@@ -115,16 +117,16 @@ gmall-data-warehouse/
 ├── datax-config-generator/                 # DataX 配置文件生成器（Java + Maven）
 │   ├── pom.xml
 │   └── src/main/java/com/datax/
-│       ├── Main.java                       # 入口
-│       ├── beans/Column.java, Table.java   # 数据模型
+│       ├── Main.java                       
+│       ├── beans/Column.java, Table.java   
 │       ├── configuration/Configuration.java
 │       └── helper/DataxJsonHelper.java, MysqlHelper.java
 │
 └── 模拟数据脚本/
     ├── gmall-remake-mock-2023-05-15-3.jar  # 日志/业务数据模拟器
     ├── application.yml                     # Mock 配置（日期/用户/业务）
-    ├── logback.xml                         # 日志输出配置
-    └── path.json                           # 各组件路径配置
+    ├── logback.xml                         
+    └── path.json                           
 ```
 
 ## 快速开始
@@ -138,7 +140,7 @@ ssh hadoop100 "kf.sh start"
 
 ### 2. 启动数据采集
 ```bash
-ssh hadoop100 "f1.sh start"          # Flume 日志采集 (hadoop100+101)
+ssh hadoop100 "f1.sh start"          # Flume 日志采集 (hadoop100)
 ssh hadoop102 "f2.sh start"          # Flume 日志消费 → HDFS
 ssh hadoop100 "mxw.sh start"         # Maxwell CDC
 ssh hadoop102 "f3.sh start"          # Flume 业务消费 → HDFS

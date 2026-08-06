@@ -1,6 +1,5 @@
 # 阶段三：业务数据采集通道（MySQL + Maxwell → Kafka）
 
-> 对应文档：《电商数仓（业务数据采集平台）V6.0》
 > 目标：部署 MySQL 8.0.39 + Maxwell 1.29.2，打通"业务数据生成 → MySQL binlog → Maxwell CDC → Kafka(topic_db)"链路
 
 ---
@@ -324,7 +323,6 @@ esac
 sudo chmod 777 /home/hadoop/bin/mxw.sh
 ```
 
-> 比原始文档增加：`status_maxwell()` 检查进程是否已在运行；支持 `restart`；使用 `com.zendesk.maxwell.Maxwell` 精确匹配进程名。
 
 ### 2.6 启动 Maxwell
 
