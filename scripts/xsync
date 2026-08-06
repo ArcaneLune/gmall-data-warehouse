@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# ====== 集群主机列表（统一维护，改这里即可）======
+HOSTS="hadoop100 hadoop101 hadoop102"
+
+# 判断参数个数
+if [ $# -lt 1 ]; then
+  echo "Usage: xsync <file1/dir1> [file2/dir2] ..."
+  exit 1
+fi
+
+# 遍历集群所有机器
+for host in $HOSTS; do
+  echo "==================== $host ===================="
+
+  for file in "$@"; do
+    # 判断文件是否存在
+    if [ -e "$file" ]; then
+      pdir=$(cd -P "$(dirname "$file")" && pwd)
+      fname=$(basename "$file")
+      
+      # 远程创建目录（sudo 提权）
+      ssh $host "sudo mkdir -p $pdir"
+      if [ $? -eq 0 ]; then
+        # rsync 远程端同样 sudo 提权
+        rsync -av --rsync-path="sudo rsync" "$pdir/$fname" "$host:$pdir"
+      else
+        echo "ERROR: Failed to create directory on $host"
+      fi
+    else
+      echo "ERROR: $file does not exist!"
+    fi
+  done
+done
