@@ -16,6 +16,29 @@
 
 ![架构图](images/流程图.jpeg)
 
+## 项目截图
+
+| 集群进程（jps） | Hive ODS 层查询 |
+|:---:|:---:|
+| ![jps](images/jps-processes.png) | ![ODS](images/hive_ods.png) |
+
+
+| Hive DIM 层查询 | Hive DWD 层查询 |
+|:---:|:---:|
+| ![DIM](images/hive_dim.png) | ![DWD](images/hive_dwd.png) |
+
+| Hive DWS 层查询 | Hive ADS 层查询 |
+|:---:|:---:|
+| ![DWS](images/hive_dws.png) | ![ADS](images/hive_ads.png) |
+
+| Doris 查询结果 | HDFS NameNode |
+|:---:|:---:|
+| ![Doris](images/doris-query.png) | ![HDFS](images/hdfs-namenode.png) |
+
+| DolphinScheduler 工作流 | Superset 仪表盘 |
+|:---:|:---:|
+| ![DS](images/ds-workflow.png) | ![Superset](images/superset-dashboard.png) |
+
 ## 技术栈
 
 | 类别 | 组件 | 版本 |
@@ -102,7 +125,7 @@ gmall-data-warehouse/
 │   ├── dws.sql / ads.sql                   # Hive DDL（DWS/ADS层）
 │   └── date_info.txt                       # 日期维度表数据（2026-2027）
 │
-├── images/                                 # 架构图与看板截图
+├── images/                                 # 架构图 + 项目截图（11张）
 │
 ├── datax-config-generator/                 # DataX 配置文件生成器（Java + Maven）
 │   ├── pom.xml
